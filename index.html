@@ -53,6 +53,15 @@
     display: grid; gap: 3px; width: 100%; max-width: 420px; aspect-ratio: 1/1;
     touch-action: manipulation; user-select: none;
   }
+  #scoreboard {
+    width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 8px;
+  }
+  #scoreboard h2 { font-size: 14px; margin: 0; opacity: .8; }
+  .score-row {
+    display: flex; justify-content: space-between; font-size: 14px;
+    background: var(--panel); border-radius: 10px; padding: 8px 14px;
+  }
+  .score-row b { font-variant-numeric: tabular-nums; }
   .cell {
     background: var(--cell); border-radius: 6px; display: flex;
     align-items: center; justify-content: center; font-size: 14px; font-weight: 700;
@@ -88,6 +97,12 @@
     <button class="ctrl" id="flagModeBtn">🚩 Mode Bendera</button>
     <button class="ctrl" id="restart">🔄 Ulang</button>
   </div>
+  <div id="scoreboard">
+    <h2>🏆 Rekor waktu tercepat</h2>
+    <div class="score-row"><span>Easy 9x9</span><b id="score-easy">-</b></div>
+    <div class="score-row"><span>Medium 12x12</span><b id="score-medium">-</b></div>
+    <div class="score-row"><span>Hard 16x16</span><b id="score-hard">-</b></div>
+  </div>
 
 <script>
 let SIZE = 9, MINES = 10;
@@ -109,6 +124,7 @@ function initGame() {
   msgEl.textContent = '';
   mineCountEl.textContent = MINES;
   boardEl.style.gridTemplateColumns = `repeat(${SIZE}, 1fr)`;
+  boardEl.style.gridTemplateRows = `repeat(${SIZE}, 1fr)`;
   boardEl.innerHTML = '';
   for (let r = 0; r < SIZE; r++) {
     for (let c = 0; c < SIZE; c++) {
@@ -176,6 +192,36 @@ function checkWin() {
   return true;
 }
 
+function difficultyKey() {
+  if (SIZE === 9) return 'easy';
+  if (SIZE === 12) return 'medium';
+  return 'hard';
+}
+
+function loadScores() {
+  try { return JSON.parse(localStorage.getItem('mineScores') || '{}'); }
+  catch { return {}; }
+}
+
+function renderScoreboard() {
+  const scores = loadScores();
+  ['easy', 'medium', 'hard'].forEach(k => {
+    const el = document.getElementById('score-' + k);
+    el.textContent = scores[k] ? scores[k] + 's' : '-';
+  });
+}
+
+function saveScoreIfBest(time) {
+  const key = difficultyKey();
+  const scores = loadScores();
+  if (!scores[key] || time < scores[key]) {
+    scores[key] = time;
+    try { localStorage.setItem('mineScores', JSON.stringify(scores)); } catch {}
+    return true;
+  }
+  return false;
+}
+
 function endGame(won) {
   over = true;
   clearInterval(timerInt);
@@ -183,8 +229,15 @@ function endGame(won) {
     if (board[r][c] === -1) revealed[r][c] = true;
   }
   render();
-  msgEl.textContent = won ? '🎉 Menang! Semua aman kebuka!' : '💥 Kena ranjau, game over!';
-  msgEl.style.color = won ? '#3cb54a' : '#ff5d5d';
+  if (won) {
+    const rekorBaru = saveScoreIfBest(seconds);
+    msgEl.textContent = rekorBaru ? `🏆 Rekor baru! ${seconds}s` : '🎉 Menang! Semua aman kebuka!';
+    msgEl.style.color = '#3cb54a';
+    renderScoreboard();
+  } else {
+    msgEl.textContent = '💥 Kena ranjau, game over!';
+    msgEl.style.color = '#ff5d5d';
+  }
 }
 
 function onCellClick(r, c) {
@@ -229,6 +282,7 @@ document.getElementById('difficulty').addEventListener('change', (e) => {
 });
 
 initGame();
+renderScoreboard();
 </script>
 </body>
 </html>
