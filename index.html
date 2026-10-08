@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Minesweeper</title>
+<style>
+  :root {
+    --bg: #1b1f27;
+    --panel: #252b36;
+    --cell: #30384a;
+    --cell-revealed: #e8ecf1;
+    --text: #e8ecf1;
+    --text-dark: #1b1f27;
+    --accent: #6c8cff;
+    --danger: #ff5d5d;
+    --flag: #ffb84d;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f2f4f8; --panel: #ffffff; --cell: #d7dee8;
+      --cell-revealed: #ffffff; --text: #1b1f27; --text-dark: #1b1f27;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #1b1f27; --panel: #252b36; --cell: #30384a;
+    --cell-revealed: #e8ecf1; --text: #e8ecf1;
+  }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); height: 100%; }
+  body {
+    height: 100%; margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, system-ui, Segoe UI, Roboto, sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 16px; gap: 14px; overflow-x: hidden;
+  }
+  h1 { font-size: 20px; margin: 4px 0; }
+  .panel {
+    background: var(--panel); border-radius: 16px; padding: 12px 16px;
+    display: flex; justify-content: space-between; align-items: center;
+    width: 100%; max-width: 420px; gap: 12px; font-variant-numeric: tabular-nums;
+  }
+  .stat { display: flex; flex-direction: column; align-items: center; font-size: 13px; opacity: .8; }
+  .stat b { font-size: 18px; opacity: 1; }
+  button.ctrl {
+    border: none; border-radius: 12px; padding: 10px 14px; font-size: 18px;
+    background: var(--cell); color: var(--text); cursor: pointer;
+  }
+  button.ctrl.active { background: var(--flag); color: var(--text-dark); }
+  #board {
+    display: grid; gap: 3px; width: 100%; max-width: 420px; aspect-ratio: 1/1;
+    touch-action: manipulation; user-select: none;
+  }
+  #scoreboard {
+    width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 8px;
+  }
+  #scoreboard h2 { font-size: 14px; margin: 0; opacity: .8; }
+  .score-row {
+    display: flex; justify-content: space-between; font-size: 14px;
+    background: var(--panel); border-radius: 10px; padding: 8px 14px;
+  }
+  .score-row b { font-variant-numeric: tabular-nums; }
+  .cell {
+    background: var(--cell); border-radius: 6px; display: flex;
+    align-items: center; justify-content: center; font-size: 14px; font-weight: 700;
+    cursor: pointer; color: var(--text);
+  }
+  .cell.revealed { background: var(--cell-revealed); color: var(--text-dark); }
+  .cell.mine { background: var(--danger); }
+  .cell.flag { background: var(--flag); color: var(--text-dark); }
+  .n1{color:#4d8cff}.n2{color:#3cb54a}.n3{color:#ff5d5d}.n4{color:#8a5dff}
+  .n5{color:#ff9d4d}.n6{color:#2dc5c5}.n7{color:#222}.n8{color:#777}
+  #msg { min-height: 24px; font-size: 15px; font-weight: 600; }
+  #restart { margin-top: 2px; }
+  select {
+    background: var(--cell); color: var(--text); border: none; border-radius: 10px;
+    padding: 8px 10px; font-size: 14px;
+  }
+</style>
+</head>
+<body>
+  <h1>💣 Minesweeper</h1>
+  <div class="panel">
+    <div class="stat">💣<b id="mineCount">10</b></div>
+    <select id="difficulty">
+      <option value="9,10">Easy 9x9</option>
+      <option value="12,20">Medium 12x12</option>
+      <option value="16,40">Hard 16x16</option>
+    </select>
+    <div class="stat">⏱️<b id="timer">0</b></div>
+  </div>
+  <div id="board"></div>
+  <div id="msg"></div>
+  <div class="panel" style="justify-content:center; gap:20px;">
+    <button class="ctrl" id="flagModeBtn">🚩 Mode Bendera</button>
+    <button class="ctrl" id="restart">🔄 Ulang</button>
+  </div>
+  <div id="scoreboard">
+    <h2>🏆 Rekor waktu tercepat</h2>
+    <div class="score-row"><span>Easy 9x9</span><b id="score-easy">-</b></div>
+    <div class="score-row"><span>Medium 12x12</span><b id="score-medium">-</b></div>
+    <div class="score-row"><span>Hard 16x16</span><b id="score-hard">-</b></div>
+  </div>
+
+<script>
+let SIZE = 9, MINES = 10;
+let board, revealed, flagged, started, over, timerInt, seconds, flagMode = false;
+
+const boardEl = document.getElementById('board');
+const msgEl = document.getElementById('msg');
+const mineCountEl = document.getElementById('mineCount');
+const timerEl = document.getElementById('timer');
+const flagBtn = document.getElementById('flagModeBtn');
+
+function initGame() {
+  clearInterval(timerInt);
+  seconds = 0; timerEl.textContent = '0';
+  started = false; over = false;
+  board = Array.from({length: SIZE}, () => Array(SIZE).fill(0));
+  revealed = Array.from({length: SIZE}, () => Array(SIZE).fill(false));
+  flagged = Array.from({length: SIZE}, () => Array(SIZE).fill(false));
+  msgEl.textContent = '';
+  mineCountEl.textContent = MINES;
+  boardEl.style.gridTemplateColumns = `repeat(${SIZE}, 1fr)`;
+  boardEl.style.gridTemplateRows = `repeat(${SIZE}, 1fr)`;
+  boardEl.innerHTML = '';
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.dataset.r = r; cell.dataset.c = c;
+      cell.addEventListener('click', () => onCellClick(r, c));
+      boardEl.appendChild(cell);
+    }
+  }
+}
+
+function placeMines(excludeR, excludeC) {
+  let placed = 0;
+  while (placed < MINES) {
+    const r = Math.floor(Math.random() * SIZE);
+    const c = Math.floor(Math.random() * SIZE);
+    if (board[r][c] === -1) continue;
+    if (Math.abs(r - excludeR) <= 1 && Math.abs(c - excludeC) <= 1) continue;
+    board[r][c] = -1;
+    placed++;
+  }
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    if (board[r][c] === -1) continue;
+    let count = 0;
+    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+      if (!dr && !dc) continue;
+      const nr = r+dr, nc = c+dc;
+      if (nr>=0 && nr<SIZE && nc>=0 && nc<SIZE && board[nr][nc]===-1) count++;
+    }
+    board[r][c] = count;
+  }
+}
+
+function reveal(r, c) {
+  if (r<0||r>=SIZE||c<0||c>=SIZE||revealed[r][c]||flagged[r][c]) return;
+  revealed[r][c] = true;
+  if (board[r][c] === 0) {
+    for (let dr=-1; dr<=1; dr++) for (let dc=-1; dc<=1; dc++) {
+      if (!dr && !dc) continue;
+      reveal(r+dr, c+dc);
+    }
+  }
+}
+
+function render() {
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    const el = boardEl.children[r*SIZE+c];
+    el.className = 'cell';
+    el.textContent = '';
+    if (flagged[r][c] && !revealed[r][c]) {
+      el.classList.add('flag'); el.textContent = '🚩';
+    } else if (revealed[r][c]) {
+      el.classList.add('revealed');
+      if (board[r][c] === -1) { el.classList.add('mine'); el.textContent = '💣'; }
+      else if (board[r][c] > 0) { el.textContent = board[r][c]; el.classList.add('n'+board[r][c]); }
+    }
+  }
+}
+
+function checkWin() {
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    if (board[r][c] !== -1 && !revealed[r][c]) return false;
+  }
+  return true;
+}
+
+function difficultyKey() {
+  if (SIZE === 9) return 'easy';
+  if (SIZE === 12) return 'medium';
+  return 'hard';
+}
+
+function loadScores() {
+  try { return JSON.parse(localStorage.getItem('mineScores') || '{}'); }
+  catch { return {}; }
+}
+
+function renderScoreboard() {
+  const scores = loadScores();
+  ['easy', 'medium', 'hard'].forEach(k => {
+    const el = document.getElementById('score-' + k);
+    el.textContent = scores[k] ? scores[k] + 's' : '-';
+  });
+}
+
+function saveScoreIfBest(time) {
+  const key = difficultyKey();
+  const scores = loadScores();
+  if (!scores[key] || time < scores[key]) {
+    scores[key] = time;
+    try { localStorage.setItem('mineScores', JSON.stringify(scores)); } catch {}
+    return true;
+  }
+  return false;
+}
+
+function endGame(won) {
+  over = true;
+  clearInterval(timerInt);
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    if (board[r][c] === -1) revealed[r][c] = true;
+  }
+  render();
+  if (won) {
+    const rekorBaru = saveScoreIfBest(seconds);
+    msgEl.textContent = rekorBaru ? `🏆 Rekor baru! ${seconds}s` : '🎉 Menang! Semua aman kebuka!';
+    msgEl.style.color = '#3cb54a';
+    renderScoreboard();
+  } else {
+    msgEl.textContent = '💥 Kena ranjau, game over!';
+    msgEl.style.color = '#ff5d5d';
+  }
+}
+
+function onCellClick(r, c) {
+  if (over) return;
+  if (flagMode) {
+    if (revealed[r][c]) return;
+    flagged[r][c] = !flagged[r][c];
+    const flagCount = flagged.flat().filter(Boolean).length;
+    mineCountEl.textContent = Math.max(0, MINES - flagCount);
+    render();
+    return;
+  }
+  if (flagged[r][c]) return;
+  if (!started) {
+    started = true;
+    placeMines(r, c);
+    seconds = 0;
+    timerInt = setInterval(() => { seconds++; timerEl.textContent = seconds; }, 1000);
+  }
+  if (board[r][c] === -1) {
+    revealed[r][c] = true;
+    render();
+    endGame(false);
+    return;
+  }
+  reveal(r, c);
+  render();
+  if (checkWin()) endGame(true);
+}
+
+flagBtn.addEventListener('click', () => {
+  flagMode = !flagMode;
+  flagBtn.classList.toggle('active', flagMode);
+});
+
+document.getElementById('restart').addEventListener('click', initGame);
+
+document.getElementById('difficulty').addEventListener('change', (e) => {
+  const [size, mines] = e.target.value.split(',').map(Number);
+  SIZE = size; MINES = mines;
+  initGame();
+});
+
+initGame();
+renderScoreboard();
+</script>
+</body>
+</html>
